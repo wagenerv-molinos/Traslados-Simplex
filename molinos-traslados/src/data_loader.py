@@ -3,9 +3,20 @@ data_loader.py
 Carga y preparacion de datos para el modelo de traslados.
 Ver docs/checkpoint_proyecto.md para el detalle de cada fuente.
 """
+import calendar
+from datetime import date
+
 import pandas as pd
 
-from config.parametros import CAJAS_POR_PALLET
+from config.parametros import CAJAS_POR_PALLET, DIAS_PRORRATEO_CONF
+
+
+def dias_restantes_mes(fecha: date) -> int:
+    """Dias restantes en el mes de `fecha`, contando `fecha` y el ultimo dia del
+    mes ambos inclusive (ej. 19/08 a 31/08 inclusive = 13 dias). Mismo criterio
+    que ya usaba el DIAS_RESTANTES_MES hardcodeado en run_ejemplo.py."""
+    ultimo_dia = calendar.monthrange(fecha.year, fecha.month)[1]
+    return ultimo_dia - fecha.day + 1
 
 
 def cargar_ibase(path_por_centro: dict, skus: list, date_cols: list) -> dict:
@@ -46,6 +57,34 @@ def cargar_forecast_remanente(path: str, sku_map: dict, loc_map: dict,
     dbar = {}
     for _, row in df.iterrows():
         dbar[(int(row["Material"]), row["Nodo"])] = row[columna_valor] / dias_totales
+    return dbar
+
+
+def cargar_forecast_remanente_ibp(skus: list, loc_ids_por_nodo: dict, periodid3: str,
+                                   fecha_corte: date = None) -> dict:
+    """Como cargar_forecast_remanente pero via IBP OData (ver src/ibp_client.py) en
+    vez del Excel FCST_por_centro.xlsx. Mismo criterio: forecast remanente mensual
+    (version Baseline2, ZAUXFCSTREMANENTE2) prorrateado en partes iguales sobre los
+    dias restantes del mes de `periodid3`, contados desde `fecha_corte` (default:
+    hoy) hasta fin de mes, ambos inclusive (ver dias_restantes_mes).
+
+    loc_ids_por_nodo: nombre de nodo interno -> LOCID de IBP (ej. {"Pilar": "2501"}).
+    """
+    from src.ibp_client import fetch_forecast_remanente_baseline2
+
+    fecha_corte = fecha_corte or date.today()
+    dias_restantes = dias_restantes_mes(fecha_corte)
+
+    nodo_por_loc_id = {loc_id: nodo for nodo, loc_id in loc_ids_por_nodo.items()}
+    filas = fetch_forecast_remanente_baseline2(
+        [str(s) for s in skus], list(loc_ids_por_nodo.values()), periodid3,
+    )
+    dbar = {}
+    for row in filas:
+        nodo = nodo_por_loc_id.get(row["LOCID"])
+        if nodo is None:
+            continue
+        dbar[(int(row["PRDID"]), nodo)] = float(row["ZAUXFCSTREMANENTE2"]) / dias_restantes
     return dbar
 
 
@@ -124,13 +163,18 @@ def cargar_politica_giro(path: str, skus: list) -> dict:
 
 
 def construir_ibase_final(ibase_raw: dict, despacho_planificado: dict, forecast_diario: dict,
-                           produccion_cargada: dict, plan_produccion_diario: dict,
-                           skus: list, nodos: list, horizonte: int) -> dict:
+                           produccion_cargada: dict, plan_produccion_diario: dict, conf: dict,
+                           skus: list, nodos: list, horizonte: int,
+                           dias_prorrateo_conf: int = DIAS_PRORRATEO_CONF) -> dict:
     """
-    Aplica las DOS correcciones de negocio acordadas (ver docs/checkpoint_proyecto.md):
+    Aplica las correcciones de negocio acordadas (ver docs/checkpoint_proyecto.md):
 
-    1. DEMANDA: consumo_real(t) = max(despacho_planificado(t), forecast(t))
-       Se resta el EXCEDENTE de forecast no cubierto por lo ya planificado.
+    1. DEMANDA: consumo_real(t) = max(despacho_planificado(t) + CONF/dias_prorrateo_conf,
+       forecast(t)). El pendiente confirmado ("sin armar", CONF de Pendientes_AFO) se
+       prorratea en partes iguales sobre `dias_prorrateo_conf` dias y se suma al despacho
+       ya planificado antes de compararlo contra el forecast - reemplaza el neteo
+       constante de CONF que antes se aplicaba directo contra Ibase en el MILP.
+       Se resta el EXCEDENTE de ese consumo no cubierto por lo ya planificado.
     2. OFERTA:  produccion_real(t) = max(produccion_cargada(t), plan_diario(t))
        Se suma el EXCEDENTE de plan no cubierto por lo ya cargado en el sistema.
 
@@ -143,9 +187,10 @@ def construir_ibase_final(ibase_raw: dict, despacho_planificado: dict, forecast_
         for n in nodos:
             acumulado_demanda = 0.0
             acumulado_oferta = 0.0
+            conf_diario = conf.get((s, n), 0.0) / dias_prorrateo_conf
             for t in range(1, horizonte + 1):
                 fcst_t = forecast_diario.get((s, n, t), 0.0)
-                despacho_t = despacho_planificado.get((s, n, t), 0.0)
+                despacho_t = despacho_planificado.get((s, n, t), 0.0) + conf_diario
                 acumulado_demanda += max(0.0, fcst_t - despacho_t)
 
                 plan_t = plan_produccion_diario.get((s, n, t), 0.0)

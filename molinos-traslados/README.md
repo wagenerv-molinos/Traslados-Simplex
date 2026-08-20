@@ -63,7 +63,9 @@ pip install -r requirements.txt
 - Consumo real = max(despacho planificado, forecast).
 - Producción real = max(producción cargada, plan semanal prorrateado a
   diario) — expone huecos de producción no cargada como alerta.
-- CONF netea stock disponible. NC tiene prioridad máxima.
+- CONF ("pendiente sin armar") se prorratea a 7 días como consumo diario extra
+  (`max(despacho + CONF/7, forecast)`), no se netea de una vez contra Ibase.
+  Sigue reservando capacidad física. NC tiene prioridad máxima.
 
 ## Próximos pasos sugeridos
 

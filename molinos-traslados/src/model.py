@@ -30,12 +30,15 @@ def resolver_modelo(skus, nodos, ibase, target, conf, nc, horizonte, time_limit=
     T_days = list(range(1, horizonte))
     all_days = list(range(1, horizonte + 1))
 
+    # CONF ("pendiente sin armar") ya no se netea aca como monto fijo: entra
+    # prorrateado a DIAS_PRORRATEO_CONF dias como consumo diario extra dentro de
+    # construir_ibase_final (src/data_loader.py). Sigue reservando capacidad
+    # fisica mas abajo (CAP_N).
     ibase_neto = {}
     for s in skus:
         for n in nodos:
-            c_conf = conf.get((s, n), 0.0)
             for t in all_days:
-                ibase_neto[(s, n, t)] = ibase.get((s, n, t), 0.0) - c_conf
+                ibase_neto[(s, n, t)] = ibase.get((s, n, t), 0.0)
 
     var_idx = {}
     n_vars = [0]

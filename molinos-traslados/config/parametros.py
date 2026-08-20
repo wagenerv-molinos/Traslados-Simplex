@@ -8,6 +8,10 @@ no el valor absoluto.
 SKUS = [56218, 56225, 56226]
 NODOS = ["Pilar", "Chacabuco", "CDT"]
 
+# LOCID de IBP (planning area MOLIBP) por nodo interno. Confirmado contra IBP el
+# 2026-08-20 filtrando SCNID eq 'Baseline 2' (ver src/ibp_client.py).
+LOC_IDS_IBP = {"Pilar": "2501", "Chacabuco": "2502", "CDT": "1018"}
+
 ARCOS = [
     ("Pilar", "CDT"),
     ("Chacabuco", "CDT"),
@@ -29,3 +33,8 @@ CAP_N = {"Pilar": 1600, "Chacabuco": 1100}
 CAMION_PALLETS = 25
 LEAD_TIME = 1
 CAJAS_POR_PALLET = 70
+
+# Dias sobre los que se prorratea el pendiente confirmado (CONF, "sin armar" de
+# Pendientes_AFO) como consumo diario extra. Reemplaza el neteo constante de
+# CONF contra Ibase (ver docs/checkpoint_proyecto.md).
+DIAS_PRORRATEO_CONF = 7

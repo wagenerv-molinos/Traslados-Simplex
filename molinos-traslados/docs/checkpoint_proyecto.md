@@ -39,6 +39,35 @@
   a una fecha de corte, prorrateado / 13 días (19 al 31/08 inclusive)
 - PENDIENTE: reemplazar por forecast diario real para todo el horizonte
 
+## Conexión IBP OData (forecast remanente) — CONFIRMADA 2026-08-20
+- Reemplaza el Excel FCST_por_centro.xlsx por consulta directa a IBP. Mismo
+  criterio de negocio (remanente mensual / días restantes), pero sin el paso
+  manual de exportar/copiar el Excel.
+- Servicio: `EXTRACT_ODATA_SRV`, planning area `MOLIBP` (mismo endpoint que usa
+  el repo hermano Forecast-Accuracy-Lag, ver `src/ibp_client.py`).
+- Ratio: `ZAUXFCSTREMANENTE2` ("Forecast Remanente Mensual Baseline2"), a nivel
+  mensual (`PERIODID3`, formato IBP "YY-Mon"), dividido por días restantes al
+  fin de mes — misma cuenta que ya hacía `cargar_forecast_remanente` con el Excel.
+- **Filtro obligatorio para que abra por centro**: `SCNID eq 'Baseline 2'` (con
+  espacio — `'Baseline2'` sin espacio no es un SCNID válido y devuelve error).
+  Sin este filtro, `LOCID` NUNCA se abre por centro: devuelve solo el total en
+  blanco y el agregado país `AR01`. Con el filtro correcto, `LOCID` abre a los
+  códigos reales: `2501`=Pilar, `2502`=Chacabuco, `1018`=CDT (Lucchetti) —
+  coincide con `CENTRO_MAP_AFO` ya usado para Pendientes_AFO.
+- `UOMTOID eq 'UMG'` (misma unidad que usa Forecast-Accuracy-Lag). Validado con
+  datos reales: valores de `ZAUXFCSTREMANENTE2` no nulos y de magnitud
+  coherente con el Excel remanente para las 3 harinas × 3 centros.
+- Nuevo: `config/parametros.py:LOC_IDS_IBP` (nodo interno → LOCID de IBP),
+  `src/ibp_client.py` (conexión + paginación), `src/data_loader.py:
+  cargar_forecast_remanente_ibp` (reemplazo directo de
+  `cargar_forecast_remanente`, misma forma de dict de salida).
+- Días restantes hasta fin de mes: ya NO hardcoded. `dias_restantes_mes(fecha)`
+  en `src/data_loader.py` los calcula desde `fecha` (default: hoy) hasta el
+  último día del mes, ambos inclusive — mismo criterio que ya usaba
+  `DIAS_RESTANTES_MES` a mano. `cargar_forecast_remanente_ibp` lo usa por
+  default, con `fecha_corte` opcional para overridear (ej. backtesting).
+- PENDIENTE: wire completo en `run_ejemplo.py` (hoy sigue usando el Excel).
+
 ## Consumo diario real vs. forecast — regla acordada
 - Ibase (stock proyectado) llega NETO — no se puede desagregar directo
 - Desagregado por movimiento individual (Fecha, Tipo=Producción/Salida/
@@ -59,7 +88,21 @@
 ## Pedidos pendientes (CONF / NC)
 - Fuente: Pendientes_AFO.xlsx (formato AFO, Centro forward-fill, cajas)
 - Conversión: ÷70 cajas/pallet
-- CONF → netea Ibase directo. NC → prioridad MÁXIMA (α_pedido=4000)
+- CONF = "pendiente sin armar" (confirmado, no armado/pickeado todavía).
+  NC → prioridad MÁXIMA (α_pedido=4000)
+- **CAMBIO 2026-08-20**: CONF dejó de netearse como monto fijo contra Ibase en
+  el MILP. Ahora se prorratea a `DIAS_PRORRATEO_CONF` (7, en
+  `config/parametros.py`) y se suma al despacho planificado como consumo
+  diario extra, DENTRO de `construir_ibase_final` (`src/data_loader.py`):
+  ```
+  consumo_real(t) = max(despacho_planificado(t) + CONF/7, forecast(t))
+  ```
+  Motivo: el neteo fijo restaba todo CONF de una sola vez en todos los días
+  del horizonte por igual; prorratearlo como consumo semanal es más realista
+  (el pendiente sin armar se despacha progresivamente, no todo de golpe).
+  CONF SIGUE restando de la capacidad física (`CAP_N`) en `src/model.py` sin
+  cambios — es una reserva de espacio distinta del consumo. `resolver_modelo`
+  ya no le resta `CONF` a `ibase_neto` (antes lo hacía como monto fijo).
 
 ## Datos maestros resueltos
 - Múltiplo logístico: 70 cajas/pallet para las 3 harinas

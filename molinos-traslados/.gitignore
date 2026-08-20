@@ -1,6 +1,8 @@
 data/*.xlsx
 data/*.csv
 !data/README.md
+.env.txt
+.env
 output_*.csv
 *.pkl
 *.log

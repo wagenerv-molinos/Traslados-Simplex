@@ -72,12 +72,12 @@ def main():
 
     plan_diario = cargar_plan_produccion(PATH_PLAN_PRODUCCION, LOC_MAP, SKU_MAP, DATE_COLS, SEMANA_POR_DIA)
 
+    conf, nc = cargar_pedidos_pendientes(PATH_PENDIENTES_AFO, "Hoja1", CENTRO_MAP_AFO, SKUS)
+
     ibase_final = construir_ibase_final(
-        ibase_raw, despacho_plan, forecast_diario, prod_cargada, plan_diario,
+        ibase_raw, despacho_plan, forecast_diario, prod_cargada, plan_diario, conf,
         SKUS, NODOS, HORIZONTE,
     )
-
-    conf, nc = cargar_pedidos_pendientes(PATH_PENDIENTES_AFO, "Hoja1", CENTRO_MAP_AFO, SKUS)
 
     g_planta_cd = cargar_politica_giro(PATH_PDG, SKUS)
     g_map = {}

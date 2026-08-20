@@ -16,7 +16,9 @@
 - Ibase_{s,n,t}: stock proyectado neto de producción+despachos+traslados TM
 - Despacho_plan_{s,n,t}: despacho ya planificado (real)
 - fcst_{s,n,t}: forecast diario
-- CONSUMO_CORREGIDO = max(Despacho_plan, fcst)
+- CONF_{s,n}: pendiente confirmado ("sin armar", de Pendientes_AFO), prorrateado
+  a D=7 días (`DIAS_PRORRATEO_CONF`)
+- CONSUMO_CORREGIDO = max(Despacho_plan + CONF/D, fcst)
 - Producción_cargada_{s,n,t}: producción ya cargada (real)
 - plan_produccion_{s,n,t}: plan semanal prorrateado (6 días/semana)
 - PRODUCCIÓN_CORREGIDA = max(Producción_cargada, plan_produccion)
@@ -27,7 +29,7 @@ target_{s,n,t} = Σ_{k=0}^{⌊g⌋−1} fcst_{s,n,t+k} + frac(g) · fcst_{s,n,t+
 ```
 - L=1 día. c_{i,j}: BASE primario / 2×BASE lateral. q_s=1 pallet.
 - CAMIÓN=25 pallets, restricción DURA. Cap_n: Pilar=1600, Chacabuco=1100, CDT=∞.
-- CONF_{s,n}, NC_{s,n}: pedidos confirmados / no confirmados
+- NC_{s,n}: pedidos no confirmados
 
 ## 3. Variables
 
