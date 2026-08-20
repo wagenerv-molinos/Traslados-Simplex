@@ -1,0 +1,12 @@
+data/*.xlsx
+data/*.csv
+!data/README.md
+output_*.csv
+*.pkl
+*.log
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.DS_Store
