@@ -68,6 +68,54 @@
   default, con `fecha_corte` opcional para overridear (ej. backtesting).
 - PENDIENTE: wire completo en `run_ejemplo.py` (hoy sigue usando el Excel).
 
+## Conexión IBP OData (plan de producción, R&S) — CONFIRMADA 2026-08-20
+- Reemplaza Planes_de_produccion.xlsx por consulta directa a IBP Response &
+  Supply. Mismo servicio `EXTRACT_ODATA_SRV`, planning area distinta:
+  `MOLIBPRS` (no hace falta un servicio nuevo, ver `src/ibp_client.py`).
+- Key figure: `PRODUCTION` ("Production Receipts" = plan total). También
+  existe `CONFIRMEDPRODUCTION` (órdenes ya confirmadas, subconjunto de
+  `PRODUCTION`) — no se usa todavía, queda como dato disponible a futuro.
+- **Granularidad**: NO admite día (`PERIODID0`) — error explícito "Key figure
+  Production Receipts cannot be calculated using time period filter Day.".
+  Solo semana (`PERIODID4`/`PERIODID5`) o más agregado — igual que el Excel
+  semanal actual.
+- **Semana CALENDARIO (`PERIODID4`), NO semana técnica (`PERIODID5`)**: la
+  semana técnica se corta en los cambios de mes (una semana que cruza fin de
+  mes aparece partida en dos filas, ej. `"TW01a M12 2025"` / `"TW01b M1 2026"`),
+  lo que complica sumar el total semanal real. La semana calendario NO se
+  corta — confirmado con una semana real que cruza agosto/septiembre 2026:
+  aparece como una sola fila `"CW36 M9 2026"`. Formato: `PERIODID4` =
+  `"CW34 M8 2026"` (distinto al `"TW34"` a secas de `Planes_de_produccion.xlsx`).
+- **`LOCID` abre por centro sin necesitar filtro de `SCNID`** (a diferencia de
+  `MOLIBP`/demanda, que sí lo requiere) — default `SCNID='Base Version'` ya
+  trae `2501`/`2502` reales. `1018` (CDT) nunca aparece, consistente con que
+  CDT no produce.
+- **Hallazgo clave**: `PERIODID4_TSTAMP` da el **lunes de inicio** de cada
+  semana calendario. Se puede filtrar por rango de fechas
+  (`PERIODID4_TSTAMP ge/le datetime'...'`) sin necesidad de armar el nombre
+  de la semana a mano. Esto permite calcular el mapeo semana→día
+  automáticamente en vez del diccionario manual `SEMANA_POR_DIA` que usa
+  `run_ejemplo.py` con el Excel — validado contra el horizonte real: el
+  corte de semana cae exactamente en 22/08→24/08 con 23/08 (domingo) en 0,
+  igual que el mapeo manual actual.
+- Nuevo: `src/ibp_client.py:fetch_produccion_semanal_rs` (fetch por rango de
+  fechas), `src/data_loader.py:cargar_plan_produccion_ibp` (reemplazo directo
+  de `cargar_plan_produccion`, misma forma de dict de salida — recibe
+  `date_cols` + `anio` en vez de `semana_por_dia`, y prorratea a
+  `dias_productivos=6` igual que antes).
+- Versión (`SCNID`): se sigue usando el default `'Base Version'` (sin filtro
+  explícito). El usuario confirmó el label exacto de "Upside" en Fiori
+  (Workbook Settings → Versions & Scenarios) = `'Upside Version'` — SÍ es un
+  SCNID válido y filtra bien, pero para las 3 harinas actuales viene casi
+  todo en 0 (`PRODUCTION` siempre 0; `CONFIRMEDPRODUCTION` solo tiene algo
+  cargado en `CW33 M8 2026`) — no parece estar mantenido para estos SKUs
+  todavía. Decisión 2026-08-20: seguir con `'Base Version'` por ahora: el
+  usuario puede pedir el cambio a Upside más adelante.
+- PENDIENTE: wire completo en `run_ejemplo.py` (hoy sigue usando el Excel).
+  Evaluar más adelante si `CONFIRMEDPRODUCTION` puede reemplazar también la
+  producción cargada de los movimientos desagregados (fuera de alcance de
+  este cambio).
+
 ## Consumo diario real vs. forecast — regla acordada
 - Ibase (stock proyectado) llega NETO — no se puede desagregar directo
 - Desagregado por movimiento individual (Fecha, Tipo=Producción/Salida/

@@ -1,9 +1,18 @@
 """
 ibp_client.py
-Cliente OData para SAP IBP (servicio EXTRACT_ODATA_SRV, planning area MOLIBP).
+Cliente OData para SAP IBP (servicio EXTRACT_ODATA_SRV).
 Conexion confirmada contra IBP el 2026-08-20. Ver docs/checkpoint_proyecto.md.
+
+Dos planning areas del mismo servicio:
+- MOLIBP:   demanda (forecast, ventas). Requiere SCNID='Baseline 2' para que
+  LOCID abra por centro.
+- MOLIBPRS: Response & Supply (produccion). LOCID abre por centro sin filtro
+  de SCNID adicional (default 'Base Version'). La key figure PRODUCTION no
+  admite granularidad de dia (PERIODID0) - solo semana (PERIODID4/5) o mas
+  agregado.
 """
 import os
+from datetime import date
 from pathlib import Path
 
 import requests
@@ -13,6 +22,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://my308646-api.scmibp1.ondemand.com/sap/opu/odata/IBP/EXTRACT_ODATA_SRV"
 RESOURCE = "MOLIBP"
+RESOURCE_RS = "MOLIBPRS"
 
 # OJO: lleva espacio. 'Baseline2' (sin espacio) no es un SCNID valido para MOLIBP.
 SCNID_BASELINE2 = "Baseline 2"
@@ -43,10 +53,10 @@ def _credenciales() -> tuple:
     return username, password
 
 
-def _fetch_page(select_fields: str, filtro: str, skip: int, top: int) -> list:
+def _fetch_page(select_fields: str, filtro: str, skip: int, top: int, resource: str = RESOURCE) -> list:
     username, password = _credenciales()
     r = requests.get(
-        f"{BASE_URL}/{RESOURCE}",
+        f"{BASE_URL}/{resource}",
         params={"$format": "json", "$select": select_fields, "$filter": filtro, "$top": top, "$skip": skip},
         auth=(username, password), headers={"Accept": "application/json"},
         timeout=120, verify=False,
@@ -56,7 +66,7 @@ def _fetch_page(select_fields: str, filtro: str, skip: int, top: int) -> list:
     return r.json()["d"]["results"]
 
 
-def paginar(select_fields: str, filtro: str, top: int = 5000) -> list:
+def paginar(select_fields: str, filtro: str, top: int = 5000, resource: str = RESOURCE) -> list:
     """Pagina via $skip.
 
     El servicio no siempre devuelve __next aunque haya mas paginas (confirmado:
@@ -67,7 +77,7 @@ def paginar(select_fields: str, filtro: str, top: int = 5000) -> list:
     all_rows = []
     skip = 0
     while True:
-        page = _fetch_page(select_fields, filtro, skip, top)
+        page = _fetch_page(select_fields, filtro, skip, top, resource=resource)
         all_rows.extend(page)
         if len(page) < top:
             break
@@ -96,4 +106,49 @@ def fetch_forecast_remanente_baseline2(skus: list, loc_ids: list, periodid3: str
     return paginar(
         select_fields="PRDID,PRDDESCR,LOCID,LOCDESCR,PERIODID3,ZAUXFCSTREMANENTE2",
         filtro=filtro,
+    )
+
+
+def _odata_datetime(fecha: date) -> str:
+    return f"datetime'{fecha.isoformat()}T00:00:00'"
+
+
+def fetch_produccion_semanal_rs(skus: list, loc_ids: list, fecha_desde: date, fecha_hasta: date,
+                                 uom: str = "UMG") -> list:
+    """Plan de produccion semanal (planning area MOLIBPRS, Response & Supply) por
+    SKU y centro logistico (LOCID), para las semanas CALENDARIO que intersectan
+    el rango [fecha_desde, fecha_hasta].
+
+    Usa PERIODID4 (semana calendario, "CW.. M.. AAAA"), NO PERIODID5 (semana
+    tecnica): la semana tecnica se corta en los cambios de mes (ej. una semana
+    puede aparecer partida en "TW01a M12 2025" / "TW01b M1 2026"), lo que
+    complica sumar el total semanal. La semana calendario no se corta - una
+    semana que cruza fin/inicio de mes aparece en una sola fila.
+
+    Filtra por PERIODID4_TSTAMP (fecha de inicio - lunes - de cada semana) en
+    vez de armar el nombre de la semana (ej. 'CW34 M8 2026') a mano: asi no
+    hace falta reproducir la logica de calendario de IBP.
+
+    La key figure PRODUCTION (Production Receipts) NO admite granularidad de
+    dia (PERIODID0) - el servicio devuelve error explicito
+    "Key figure Production Receipts cannot be calculated using time period
+    filter Day.". Por eso se pide a nivel semana y se prorratea despues (ver
+    src/data_loader.py:cargar_plan_produccion_ibp).
+
+    Devuelve tambien CONFIRMEDPRODUCTION (ordenes de produccion confirmadas,
+    subconjunto de PRODUCTION) por si se necesita distinguirlo mas adelante.
+
+    skus y loc_ids se pasan como listas de strings (PRDID y LOCID de IBP).
+    """
+    filtro_sku = " or ".join(f"PRDID eq '{s}'" for s in skus)
+    filtro_loc = " or ".join(f"LOCID eq '{n}'" for n in loc_ids)
+    filtro = (
+        f"UOMTOID eq '{uom}' and ({filtro_sku}) and ({filtro_loc})"
+        f" and PERIODID4_TSTAMP ge {_odata_datetime(fecha_desde)}"
+        f" and PERIODID4_TSTAMP le {_odata_datetime(fecha_hasta)}"
+    )
+    return paginar(
+        select_fields="PRDID,LOCID,LOCDESCR,PERIODID4,PERIODID4_TSTAMP,PRODUCTION,CONFIRMEDPRODUCTION",
+        filtro=filtro,
+        resource=RESOURCE_RS,
     )

@@ -4,7 +4,7 @@ Carga y preparacion de datos para el modelo de traslados.
 Ver docs/checkpoint_proyecto.md para el detalle de cada fuente.
 """
 import calendar
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -86,6 +86,66 @@ def cargar_forecast_remanente_ibp(skus: list, loc_ids_por_nodo: dict, periodid3:
             continue
         dbar[(int(row["PRDID"]), nodo)] = float(row["ZAUXFCSTREMANENTE2"]) / dias_restantes
     return dbar
+
+
+def _fecha_desde_tstamp_odata(valor: str) -> date:
+    """Parsea '/Date(1786924800000)/' (epoch ms, UTC) a date. IBP entrega el
+    lunes de inicio de la semana calendario en este campo."""
+    ms = int(valor.strip("/").removeprefix("Date(").removesuffix(")"))
+    return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).date()
+
+
+def cargar_plan_produccion_ibp(skus: list, loc_ids_por_nodo: dict, date_cols: list, anio: int,
+                                dias_productivos: int = 6) -> dict:
+    """Como cargar_plan_produccion pero via IBP OData - Response & Supply (ver
+    src/ibp_client.py) en vez de Planes_de_produccion.xlsx. Mismo criterio: el
+    plan semanal (PRODUCTION, planning area MOLIBPRS) se prorratea en partes
+    iguales sobre `dias_productivos` dias productivos por semana (domingo sin
+    produccion).
+
+    Usa semana CALENDARIO (PERIODID4), no semana tecnica (PERIODID5): la
+    tecnica se corta en los cambios de mes (aparece partida en dos filas, ej.
+    "TW01a"/"TW01b"), lo que complica sumar el total semanal real.
+
+    A diferencia del Excel, NO hace falta un diccionario semana->dia
+    (SEMANA_POR_DIA) armado a mano: la semana de cada dia se calcula sola
+    (lunes a domingo) y se cruza contra el lunes de inicio que devuelve IBP en
+    PERIODID4_TSTAMP para cada semana calendario.
+
+    date_cols: fechas del horizonte en formato "dd/mm" (mismo formato que ya
+    usa run_ejemplo.py). anio: año calendario de esas fechas (date_cols no
+    lleva año).
+    loc_ids_por_nodo: nombre de nodo interno -> LOCID de IBP (ej. {"Pilar": "2501"}).
+    """
+    from src.ibp_client import fetch_produccion_semanal_rs
+
+    fechas = [date(anio, int(d.split("/")[1]), int(d.split("/")[0])) for d in date_cols]
+    fecha_desde, fecha_hasta = min(fechas), max(fechas)
+
+    nodo_por_loc_id = {loc_id: nodo for nodo, loc_id in loc_ids_por_nodo.items()}
+    filas = fetch_produccion_semanal_rs(
+        [str(s) for s in skus], list(loc_ids_por_nodo.values()), fecha_desde, fecha_hasta,
+    )
+
+    produccion_semana = {}
+    for row in filas:
+        nodo = nodo_por_loc_id.get(row["LOCID"])
+        if nodo is None:
+            continue
+        inicio_semana = _fecha_desde_tstamp_odata(row["PERIODID4_TSTAMP"])
+        produccion_semana[(int(row["PRDID"]), nodo, inicio_semana)] = float(row["PRODUCTION"])
+
+    plan = {}
+    for s in skus:
+        for nodo in loc_ids_por_nodo:
+            for t, fecha in enumerate(fechas, start=1):
+                if fecha.weekday() == 6:  # domingo: sin produccion
+                    plan[(s, nodo, t)] = 0.0
+                    continue
+                inicio_semana = fecha - timedelta(days=fecha.weekday())
+                total_semana = produccion_semana.get((s, nodo, inicio_semana), 0.0)
+                plan[(s, nodo, t)] = total_semana / dias_productivos
+    return plan
 
 
 def cargar_forecast_diario_real(path: str, loc_map: dict, date_cols: list,
