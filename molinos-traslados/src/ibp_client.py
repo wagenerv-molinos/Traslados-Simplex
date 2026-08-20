@@ -85,7 +85,7 @@ def paginar(select_fields: str, filtro: str, top: int = 5000, resource: str = RE
     return all_rows
 
 
-def fetch_forecast_remanente_baseline2(skus: list, loc_ids: list, periodid3: str, uom: str = "UMG") -> list:
+def fetch_forecast_remanente_baseline2(skus: list, loc_ids: list, periodid3: str, uom: str = "PAL") -> list:
     """Forecast remanente mensual (ZAUXFCSTREMANENTE2, version 'Baseline 2') por
     SKU y centro logistico (LOCID), para un periodo mensual (formato IBP 'YY-Mon',
     ej. '26-Aug').
@@ -114,7 +114,7 @@ def _odata_datetime(fecha: date) -> str:
 
 
 def fetch_produccion_semanal_rs(skus: list, loc_ids: list, fecha_desde: date, fecha_hasta: date,
-                                 uom: str = "UMG") -> list:
+                                 uom: str = "PAL") -> list:
     """Plan de produccion semanal (planning area MOLIBPRS, Response & Supply) por
     SKU y centro logistico (LOCID), para las semanas CALENDARIO que intersectan
     el rango [fecha_desde, fecha_hasta].
@@ -135,8 +135,11 @@ def fetch_produccion_semanal_rs(skus: list, loc_ids: list, fecha_desde: date, fe
     filter Day.". Por eso se pide a nivel semana y se prorratea despues (ver
     src/data_loader.py:cargar_plan_produccion_ibp).
 
-    Devuelve tambien CONFIRMEDPRODUCTION (ordenes de produccion confirmadas,
-    subconjunto de PRODUCTION) por si se necesita distinguirlo mas adelante.
+    Devuelve tambien CONFIRMEDPRODUCTION (ordenes de produccion confirmadas).
+    OJO: NO es necesariamente subconjunto de PRODUCTION - se vio un caso real
+    (56218 Chacabuco, CW34 M8 2026) con PRODUCTION=0 y CONFIRMEDPRODUCTION=81
+    pallets (ese volumen ya estaba cargado via movimientos desagregados/Excel,
+    asi que no hay hueco de datos, pero no asumir PRODUCTION >= CONFIRMEDPRODUCTION).
 
     skus y loc_ids se pasan como listas de strings (PRDID y LOCID de IBP).
     """

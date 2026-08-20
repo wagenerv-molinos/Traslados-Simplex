@@ -54,9 +54,14 @@
   blanco y el agregado país `AR01`. Con el filtro correcto, `LOCID` abre a los
   códigos reales: `2501`=Pilar, `2502`=Chacabuco, `1018`=CDT (Lucchetti) —
   coincide con `CENTRO_MAP_AFO` ya usado para Pendientes_AFO.
-- `UOMTOID eq 'UMG'` (misma unidad que usa Forecast-Accuracy-Lag). Validado con
-  datos reales: valores de `ZAUXFCSTREMANENTE2` no nulos y de magnitud
-  coherente con el Excel remanente para las 3 harinas × 3 centros.
+- **`UOMTOID eq 'PAL'` (pallets) — NO `'UMG'`.** Corrección 2026-08-20: se
+  empezó con `'UMG'` (copiado de Forecast-Accuracy-Lag sin validar) y daba
+  valores ~5% más altos que los pallets reales — el usuario detectó el
+  desvío comparando contra un pivot de Fiori en `PAL` (56218 Pilar:
+  CW34=693, CW35=635 en Fiori vs 727.2/666.6 que dábamos con `UMG`; con
+  `PAL` da 692.59/634.87, redondea exacto). `UMG` es una unidad de gestión
+  genérica, no pallets — no asumir que las unidades por default de IBP son
+  pallets sin comparar contra un pivot real.
 - Nuevo: `config/parametros.py:LOC_IDS_IBP` (nodo interno → LOCID de IBP),
   `src/ibp_client.py` (conexión + paginación), `src/data_loader.py:
   cargar_forecast_remanente_ibp` (reemplazo directo de
@@ -66,12 +71,14 @@
   último día del mes, ambos inclusive — mismo criterio que ya usaba
   `DIAS_RESTANTES_MES` a mano. `cargar_forecast_remanente_ibp` lo usa por
   default, con `fecha_corte` opcional para overridear (ej. backtesting).
-- PENDIENTE: wire completo en `run_ejemplo.py` (hoy sigue usando el Excel).
+- **WIREADO 2026-08-20** en `run_ejemplo.py` — ya no usa el Excel.
 
 ## Conexión IBP OData (plan de producción, R&S) — CONFIRMADA 2026-08-20
 - Reemplaza Planes_de_produccion.xlsx por consulta directa a IBP Response &
   Supply. Mismo servicio `EXTRACT_ODATA_SRV`, planning area distinta:
   `MOLIBPRS` (no hace falta un servicio nuevo, ver `src/ibp_client.py`).
+- **`UOMTOID='PAL'`** (ver corrección de unidad más arriba — acá fue donde se
+  detectó: 56218 Pilar CW34/CW35 vs. pivot de Fiori del usuario).
 - Key figure: `PRODUCTION` ("Production Receipts" = plan total). También
   existe `CONFIRMEDPRODUCTION` (órdenes ya confirmadas, subconjunto de
   `PRODUCTION`) — no se usa todavía, queda como dato disponible a futuro.
@@ -111,7 +118,7 @@
   cargado en `CW33 M8 2026`) — no parece estar mantenido para estos SKUs
   todavía. Decisión 2026-08-20: seguir con `'Base Version'` por ahora: el
   usuario puede pedir el cambio a Upside más adelante.
-- PENDIENTE: wire completo en `run_ejemplo.py` (hoy sigue usando el Excel).
+- **WIREADO 2026-08-20** en `run_ejemplo.py` — ya no usa el Excel.
   Evaluar más adelante si `CONFIRMEDPRODUCTION` puede reemplazar también la
   producción cargada de los movimientos desagregados (fuera de alcance de
   este cambio).
