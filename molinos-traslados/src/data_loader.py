@@ -61,7 +61,8 @@ def cargar_forecast_remanente(path: str, sku_map: dict, loc_map: dict,
 
 
 def cargar_forecast_remanente_ibp(skus: list, loc_ids_por_nodo: dict, periodid3: str,
-                                   fecha_corte: date = None) -> dict:
+                                   fecha_corte: date = None,
+                                   loc_ids_extra_por_nodo: dict = None) -> dict:
     """Como cargar_forecast_remanente pero via IBP OData (ver src/ibp_client.py) en
     vez del Excel FCST_por_centro.xlsx. Mismo criterio: forecast remanente mensual
     (version Baseline2, ZAUXFCSTREMANENTE2) prorrateado en partes iguales sobre los
@@ -69,23 +70,36 @@ def cargar_forecast_remanente_ibp(skus: list, loc_ids_por_nodo: dict, periodid3:
     hoy) hasta fin de mes, ambos inclusive (ver dias_restantes_mes).
 
     loc_ids_por_nodo: nombre de nodo interno -> LOCID de IBP (ej. {"Pilar": "2501"}).
+    loc_ids_extra_por_nodo: nodo -> lista de LOCID adicionales cuyo forecast se
+    SUMA al del nodo antes de prorratear (ej. CDT = Lucchetti + Esteban
+    Echeverria, ver config/parametros.py:LOC_IDS_IBP_FORECAST_EXTRA - el
+    forecast de Lucchetti solo no contempla la demanda completa del centro).
     """
     from src.ibp_client import fetch_forecast_remanente_baseline2
 
     fecha_corte = fecha_corte or date.today()
     dias_restantes = dias_restantes_mes(fecha_corte)
+    loc_ids_extra_por_nodo = loc_ids_extra_por_nodo or {}
 
     nodo_por_loc_id = {loc_id: nodo for nodo, loc_id in loc_ids_por_nodo.items()}
+    for nodo, extras in loc_ids_extra_por_nodo.items():
+        for loc_id in extras:
+            nodo_por_loc_id[loc_id] = nodo
+
+    todos_los_loc_ids = list(loc_ids_por_nodo.values()) + [
+        loc_id for extras in loc_ids_extra_por_nodo.values() for loc_id in extras
+    ]
     filas = fetch_forecast_remanente_baseline2(
-        [str(s) for s in skus], list(loc_ids_por_nodo.values()), periodid3,
+        [str(s) for s in skus], todos_los_loc_ids, periodid3,
     )
-    dbar = {}
+    acumulado = {}
     for row in filas:
         nodo = nodo_por_loc_id.get(row["LOCID"])
         if nodo is None:
             continue
-        dbar[(int(row["PRDID"]), nodo)] = float(row["ZAUXFCSTREMANENTE2"]) / dias_restantes
-    return dbar
+        key = (int(row["PRDID"]), nodo)
+        acumulado[key] = acumulado.get(key, 0.0) + float(row["ZAUXFCSTREMANENTE2"])
+    return {key: val / dias_restantes for key, val in acumulado.items()}
 
 
 def _fecha_desde_tstamp_odata(valor: str) -> date:

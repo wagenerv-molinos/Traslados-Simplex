@@ -3,7 +3,7 @@
 ## Alcance actual
 - SKUs: 56218 (Blancaflor Leudante), 56225 (Favorita 000), 56226 (Favorita 0000)
 - Nodos: **Pilar, Chacabuco, CDT** (CDEE fue eliminado por completo del alcance)
-- Horizonte de la última corrida: 19/08 → 29/08 (11 días)
+- Horizonte de la última corrida: 20/08 → 30/08 (11 días)
 
 ## Topología de red vigente
 - Arcos permitidos: Pilar→CDT, Chacabuco→CDT (primario, costo BASE)
@@ -72,6 +72,17 @@
   `DIAS_RESTANTES_MES` a mano. `cargar_forecast_remanente_ibp` lo usa por
   default, con `fecha_corte` opcional para overridear (ej. backtesting).
 - **WIREADO 2026-08-20** en `run_ejemplo.py` — ya no usa el Excel.
+- **CORRECCIÓN 2026-08-20 — forecast de CDT incompleto**: `LOCID='1018'`
+  (Lucchetti) por sí solo NO contempla la demanda total de CDT — a pedido
+  del usuario, se suma el forecast de `LOCID='8108'` (Esteban Echeverria).
+  El de Echeverría es MUCHO mayor que el de Lucchetti solo (10x-28x según
+  el SKU) — antes de esta corrección el forecast de CDT estaba fuertemente
+  subestimado y CDT nunca aparecía en alertas de faltante. Implementado en
+  `config/parametros.py:LOC_IDS_IBP_FORECAST_EXTRA` (nodo → lista de LOCID
+  adicionales a sumar) y `cargar_forecast_remanente_ibp` (parámetro
+  `loc_ids_extra_por_nodo`, suma antes de prorratear). Sigue pendiente
+  confirmar si esta misma extensión aplica también al lado de oferta/
+  producción de CDT (no aplica hoy — CDT no produce) o a otras fuentes.
 
 ## Conexión IBP OData (plan de producción, R&S) — CONFIRMADA 2026-08-20
 - Reemplaza Planes_de_produccion.xlsx por consulta directa a IBP Response &

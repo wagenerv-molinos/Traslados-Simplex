@@ -12,6 +12,12 @@ NODOS = ["Pilar", "Chacabuco", "CDT"]
 # 2026-08-20 filtrando SCNID eq 'Baseline 2' (ver src/ibp_client.py).
 LOC_IDS_IBP = {"Pilar": "2501", "Chacabuco": "2502", "CDT": "1018"}
 
+# LOCID adicionales de IBP a sumar en el forecast de cada nodo (ver
+# docs/checkpoint_proyecto.md). El forecast de CDT en LOCID='1018' (Lucchetti)
+# todavia no contempla la totalidad de la demanda del centro - falta sumarle
+# el de '8108' (Esteban Echeverria). A pedido del usuario, 2026-08-20.
+LOC_IDS_IBP_FORECAST_EXTRA = {"CDT": ["8108"]}
+
 ARCOS = [
     ("Pilar", "CDT"),
     ("Chacabuco", "CDT"),

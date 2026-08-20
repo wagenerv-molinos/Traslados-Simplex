@@ -10,10 +10,10 @@ from src.data_loader import (
 )
 from src.model import construir_target, resolver_modelo
 from src.report import extraer_traslados, extraer_camiones, extraer_alertas_faltante, extraer_cobertura
-from config.parametros import SKUS, NODOS, ARCOS, LOC_IDS_IBP
+from config.parametros import SKUS, NODOS, ARCOS, LOC_IDS_IBP, LOC_IDS_IBP_FORECAST_EXTRA
 
-DATE_COLS = ["19/08", "20/08", "21/08", "22/08", "23/08", "24/08", "25/08",
-             "26/08", "27/08", "28/08", "29/08"]
+DATE_COLS = ["20/08", "21/08", "22/08", "23/08", "24/08", "25/08",
+             "26/08", "27/08", "28/08", "29/08", "30/08"]
 HORIZONTE = len(DATE_COLS)
 ANIO = 2026
 
@@ -47,7 +47,9 @@ def main():
     ibase_raw = cargar_ibase(PATHS_IBASE, SKUS, DATE_COLS)
     despacho_plan, prod_cargada = cargar_movimientos_desagregados(PATHS_MOVIMIENTOS, DATE_COLS)
 
-    dbar_const = cargar_forecast_remanente_ibp(SKUS, LOC_IDS_IBP, PERIODID3_HORIZONTE)
+    dbar_const = cargar_forecast_remanente_ibp(
+        SKUS, LOC_IDS_IBP, PERIODID3_HORIZONTE, loc_ids_extra_por_nodo=LOC_IDS_IBP_FORECAST_EXTRA,
+    )
     forecast_diario = {
         (s, n, t): dbar_const[(s, n)]
         for (s, n) in dbar_const
