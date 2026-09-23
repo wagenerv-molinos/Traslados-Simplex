@@ -5,9 +5,9 @@ Colocar acá, por corrida:
 
 | Archivo | Contenido |
 |---|---|
-| `Stock_proyectado_Pilar.xlsx`, `_Chacabuco.xlsx`, `_CDT.xlsx` | Stock proyectado (Ibase) día a día |
-| `Pilar_<SKU>.xlsx`, `Chaca_<SKU>.xlsx`, `CDT_<SKU>.xlsx` | Movimientos desagregados (Producción/Salida/Llegada) |
-| `Pendientes_AFO.xlsx` | Pedidos pendientes (confirmados/no confirmados) |
+| `Stock proyectado Pilar.xlsx`, `... Chacabuco.xlsx`, `... CDT.xlsx` | Stock proyectado (Ibase) día a día; sus columnas dd/mm definen el horizonte |
+| `Pilar x SKU.xlsx`, `Chaca x SKU.xlsx`, `CDT x SKU.xlsx` | Movimientos desagregados (Producción/Salida/Llegada), un archivo por centro con columna SKU |
+| `Pendientes AFO.xlsx` | Pedidos pendientes (confirmados; no confirmados opcional) |
 | `PDG.xlsx` | Política de días de giro |
 
 El forecast remanente y el plan de producción ya NO vienen de Excel — se
