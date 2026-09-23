@@ -32,20 +32,24 @@ def cargar_ibase(path_por_centro: dict, skus: list, date_cols: list) -> dict:
     return ibase
 
 
-def cargar_movimientos_desagregados(path_por_sku_centro: dict, date_cols: list) -> tuple:
+def cargar_movimientos_desagregados(path_por_centro: dict, skus: list, date_cols: list) -> tuple:
+    """Un archivo por centro con columna SKU (formato "<Centro> x SKU.xlsx")."""
     despacho, produccion = {}, {}
-    for (centro, sku), path in path_por_sku_centro.items():
-        df = pd.read_excel(path)
-        df["Fecha"] = pd.to_datetime(df["Fecha"], dayfirst=True)
-        df["FechaStr"] = df["Fecha"].dt.strftime("%d/%m")
-        tipos = df["Tipo"].unique()
+    for centro, path in path_por_centro.items():
+        df_centro = pd.read_excel(path)
+        df_centro["SKU"] = pd.to_numeric(df_centro["SKU"], errors="coerce")
+        df_centro["Fecha"] = pd.to_datetime(df_centro["Fecha"], dayfirst=True)
+        df_centro["FechaStr"] = df_centro["Fecha"].dt.strftime("%d/%m")
+        tipos = df_centro["Tipo"].unique()
         tipo_prod = "Producci\u00f3n" if "Producci\u00f3n" in tipos else "Llegada"
-        for t, d in enumerate(date_cols, start=1):
-            sub = df[df["FechaStr"] == d]
-            prod = sub[sub["Tipo"] == tipo_prod]["Qty (PAL)"].sum()
-            sal = abs(sub[sub["Tipo"] == "Salida"]["Qty (PAL)"].sum())
-            despacho[(sku, centro, t)] = sal
-            produccion[(sku, centro, t)] = prod
+        for sku in skus:
+            df = df_centro[df_centro["SKU"] == sku]
+            for t, d in enumerate(date_cols, start=1):
+                sub = df[df["FechaStr"] == d]
+                prod = sub[sub["Tipo"] == tipo_prod]["Qty (PAL)"].sum()
+                sal = abs(sub[sub["Tipo"] == "Salida"]["Qty (PAL)"].sum())
+                despacho[(sku, centro, t)] = sal
+                produccion[(sku, centro, t)] = prod
     return despacho, produccion
 
 
@@ -58,6 +62,38 @@ def cargar_forecast_remanente(path: str, sku_map: dict, loc_map: dict,
     for _, row in df.iterrows():
         dbar[(int(row["Material"]), row["Nodo"])] = row[columna_valor] / dias_totales
     return dbar
+
+
+_MESES_EN = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def periodid3(anio: int, mes: int) -> str:
+    """Periodo mensual en formato IBP 'YY-Mon' (ej. '26-Sep')."""
+    return f"{anio % 100:02d}-{_MESES_EN[mes - 1]}"
+
+
+def cargar_forecast_diario_ibp(skus: list, loc_ids_por_nodo: dict, fechas: list,
+                                loc_ids_extra_por_nodo: dict = None) -> dict:
+    """Forecast diario (pallets) para cada fecha de `fechas`, armado a partir del
+    forecast remanente MENSUAL de IBP (ver cargar_forecast_remanente_ibp):
+    - mes de fechas[0]: remanente / dias restantes desde fechas[0] a fin de mes.
+    - meses siguientes: remanente del mes (= mes completo, todavia no empezo) /
+      dias del mes.
+    Devuelve {(sku, nodo, t): pallets/dia} con t = 1..len(fechas).
+    """
+    meses = sorted({(f.year, f.month) for f in fechas})
+    dbar_por_mes = {}
+    for anio, mes in meses:
+        corte = fechas[0] if (anio, mes) == (fechas[0].year, fechas[0].month) else date(anio, mes, 1)
+        dbar_por_mes[(anio, mes)] = cargar_forecast_remanente_ibp(
+            skus, loc_ids_por_nodo, periodid3(anio, mes), fecha_corte=corte,
+            loc_ids_extra_por_nodo=loc_ids_extra_por_nodo,
+        )
+    return {
+        (s, n, t): dbar_por_mes[(f.year, f.month)].get((s, n), 0.0)
+        for s in skus for n in loc_ids_por_nodo
+        for t, f in enumerate(fechas, start=1)
+    }
 
 
 def cargar_forecast_remanente_ibp(skus: list, loc_ids_por_nodo: dict, periodid3: str,
@@ -134,7 +170,11 @@ def cargar_plan_produccion_ibp(skus: list, loc_ids_por_nodo: dict, date_cols: li
     from src.ibp_client import fetch_produccion_semanal_rs
 
     fechas = [date(anio, int(d.split("/")[1]), int(d.split("/")[0])) for d in date_cols]
-    fecha_desde, fecha_hasta = min(fechas), max(fechas)
+    # El filtro de IBP es sobre el LUNES de inicio de semana: si el horizonte
+    # arranca a mitad de semana, hay que pedir desde ese lunes o la primera
+    # semana queda afuera.
+    fecha_desde = min(fechas) - timedelta(days=min(fechas).weekday())
+    fecha_hasta = max(fechas)
 
     nodo_por_loc_id = {loc_id: nodo for nodo, loc_id in loc_ids_por_nodo.items()}
     filas = fetch_produccion_semanal_rs(
@@ -206,6 +246,9 @@ def cargar_plan_produccion(path: str, loc_map: dict, sku_map: dict, date_cols: l
 def cargar_pedidos_pendientes(path: str, sheet_name: str, centro_map: dict, skus: list,
                                cajas_por_pallet: int = CAJAS_POR_PALLET) -> tuple:
     df = pd.read_excel(path, sheet_name=sheet_name)
+    # La columna de no confirmados puede no venir en el export (se asume 0).
+    if len(df.columns) == 4:
+        df["CantNoConfirmado"] = None
     df.columns = ["Centro", "Producto", "Material", "CantConfirmado", "CantNoConfirmado"]
     df = df.iloc[1:].copy()
     df["Centro"] = df["Centro"].ffill()
@@ -239,7 +282,7 @@ def cargar_politica_giro(path: str, skus: list) -> dict:
 def construir_ibase_final(ibase_raw: dict, despacho_planificado: dict, forecast_diario: dict,
                            produccion_cargada: dict, plan_produccion_diario: dict, conf: dict,
                            skus: list, nodos: list, horizonte: int,
-                           dias_prorrateo_conf: int = DIAS_PRORRATEO_CONF) -> dict:
+                           dias_prorrateo_conf: int = DIAS_PRORRATEO_CONF) -> tuple:
     """
     Aplica las correcciones de negocio acordadas (ver docs/checkpoint_proyecto.md):
 
@@ -255,8 +298,12 @@ def construir_ibase_final(ibase_raw: dict, despacho_planificado: dict, forecast_
     Ambos ajustes son ACUMULATIVOS dia a dia. Si el resultado muestra stock
     fuertemente negativo pese a esta correccion, es una ALERTA GENUINA de
     produccion no cargada en el sistema - no un error del modelo.
+
+    CONF se suma solo en los primeros `dias_prorrateo_conf` dias (antes se sumaba
+    en todos los dias del horizonte, contando mas de una vez el pendiente).
+    Devuelve (ibase_final, consumo) con consumo[(s, n, t)] = consumo_real(t).
     """
-    ibase_final = {}
+    ibase_final, consumo = {}, {}
     for s in skus:
         for n in nodos:
             acumulado_demanda = 0.0
@@ -264,8 +311,10 @@ def construir_ibase_final(ibase_raw: dict, despacho_planificado: dict, forecast_
             conf_diario = conf.get((s, n), 0.0) / dias_prorrateo_conf
             for t in range(1, horizonte + 1):
                 fcst_t = forecast_diario.get((s, n, t), 0.0)
-                despacho_t = despacho_planificado.get((s, n, t), 0.0) + conf_diario
-                acumulado_demanda += max(0.0, fcst_t - despacho_t)
+                planificado_t = despacho_planificado.get((s, n, t), 0.0)
+                conf_t = conf_diario if t <= dias_prorrateo_conf else 0.0
+                consumo[(s, n, t)] = max(planificado_t + conf_t, fcst_t)
+                acumulado_demanda += consumo[(s, n, t)] - planificado_t
 
                 plan_t = plan_produccion_diario.get((s, n, t), 0.0)
                 cargada_t = produccion_cargada.get((s, n, t), 0.0)
@@ -273,4 +322,4 @@ def construir_ibase_final(ibase_raw: dict, despacho_planificado: dict, forecast_
 
                 base = ibase_raw.get((s, n, t), 0.0)
                 ibase_final[(s, n, t)] = base - acumulado_demanda + acumulado_oferta
-    return ibase_final
+    return ibase_final, consumo

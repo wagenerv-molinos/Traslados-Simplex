@@ -4,6 +4,7 @@ data/*.csv
 .env.txt
 .env
 output_*.csv
+output/
 *.pkl
 *.log
 __pycache__/

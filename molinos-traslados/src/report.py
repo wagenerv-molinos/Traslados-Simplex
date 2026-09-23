@@ -21,7 +21,8 @@ def extraer_traslados(res, var_idx, date_cols, arcos_laterales=None):
                     "Tipo": "Lateral" if a in arcos_laterales else "Primario",
                 })
     df = pd.DataFrame(filas)
-    return df.sort_values(["Fecha", "Origen", "SKU"]) if len(df) else df
+    orden = {d: i for i, d in enumerate(date_cols)}
+    return df.sort_values(["Fecha", "Origen", "SKU"], key=lambda c: c.map(orden) if c.name == "Fecha" else c) if len(df) else df
 
 
 def extraer_camiones(res, var_idx, date_cols):
@@ -34,7 +35,8 @@ def extraer_camiones(res, var_idx, date_cols):
             if val > 0.5:
                 filas.append({"Arco": f"{a[0]}->{a[1]}", "Fecha": date_cols[t - 1], "Camiones": round(val)})
     df = pd.DataFrame(filas)
-    return df.sort_values(["Fecha", "Arco"]) if len(df) else df
+    orden = {d: i for i, d in enumerate(date_cols)}
+    return df.sort_values(["Fecha", "Arco"], key=lambda c: c.map(orden) if c.name == "Fecha" else c) if len(df) else df
 
 
 def extraer_alertas_faltante(res, var_idx, skus, nodos, all_days, date_cols, umbral=0.5):

@@ -38,6 +38,7 @@ DELTA = 0
 CAP_N = {"Pilar": 1600, "Chacabuco": 1100}
 CAMION_PALLETS = 25
 LEAD_TIME = 1
+DIAS_SEMANA_SIN_DESPACHO = [6]  # 0=lunes ... 6=domingo: ese dia no sale ningun camion
 CAJAS_POR_PALLET = 70
 
 # Dias sobre los que se prorratea el pendiente confirmado (CONF, "sin armar" de

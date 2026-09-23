@@ -179,6 +179,30 @@
   src/model.py, src/report.py, run_ejemplo.py como orquestador
 - Reemplaza los scripts sueltos generados durante la exploración
 
+## Changelog 2026-09-23 (corrida 23/09 → 03/10)
+- Horizonte automático: se toma de las columnas dd/mm de `data/Stock proyectado Pilar.xlsx`
+  (ya no hay DATE_COLS hardcodeado). Salida en `output/resultado_traslados.xlsx` (Traslados,
+  Camiones, Alertas, Cobertura, Consumo con el desglose planificado/CONF/forecast/producción).
+- Movimientos: un archivo por centro con columna SKU (`Pilar/Chaca/CDT x SKU.xlsx`).
+- Pendientes AFO puede venir sin columna de no confirmados → NC = 0.
+- Forecast multi-mes (`cargar_forecast_diario_ibp`): mes en curso = remanente ÷ días restantes
+  desde el inicio del horizonte; meses siguientes = remanente del mes (mes completo) ÷ días del mes.
+  Se extiende 14 días más allá del horizonte para que el target de los últimos días cubra la
+  ventana completa de g (antes caía a ~0 al final).
+- Validado: el Excel "FCST por centro.xlsx" en la fila 1018 ya trae Lucchetti + Echeverría
+  sumados (56218 sep: 49,3 + 170,5 = 219,8), igual que IBP con LOC_IDS_IBP_FORECAST_EXTRA.
+- Plan de producción IBP: el filtro PERIODID4_TSTAMP arranca en el lunes de la primera semana
+  (antes, con un horizonte que empieza a mitad de semana, esa semana quedaba afuera).
+- CONF: se prorratea ÷7 solo en los primeros 7 días (antes se sumaba en todos los días del
+  horizonte, 11/7 del pendiente). Sigue reservando CAP_N (confirmado por el usuario).
+- Exceso (E) cuenta el stock en tránsito hacia el nodo (`contar_transito=True`). Sin esto,
+  el tránsito escondía un día de sobre-stock y empataba con el costo lateral (2×BASE = β planta),
+  generando traslados espurios Chacabuco→Pilar. Aprobado por el usuario.
+- Domingos sin despacho (`DIAS_SEMANA_SIN_DESPACHO`). Aprobado por el usuario.
+- Producción: se mantiene la comparación DIARIA max(OP del día, plan semanal/6) por decisión
+  del usuario. Limitación conocida: con OPs irregulares dentro de la semana sobreestima la
+  producción (ej. Pilar-56226 CW39: +19 pallets aunque las OPs ya superan el plan).
+
 ## Próximos pasos
 1. Conectar forecast diario real (reemplazar el remanente/prorrateado)
 2. Automatizar rolling horizon: re-solve diario emitiendo solo deltas

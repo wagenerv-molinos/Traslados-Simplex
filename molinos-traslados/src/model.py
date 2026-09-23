@@ -26,7 +26,9 @@ def construir_target(skus, nodos, g_map, forecast_diario, horizonte):
     return target
 
 
-def resolver_modelo(skus, nodos, ibase, target, conf, nc, horizonte, time_limit=90):
+def resolver_modelo(skus, nodos, ibase, target, conf, nc, horizonte, time_limit=90,
+                    contar_transito=True, dias_sin_despacho=()):
+    """dias_sin_despacho: indices t (1..horizonte) en los que no sale ningun camion."""
     T_days = list(range(1, horizonte))
     all_days = list(range(1, horizonte + 1))
 
@@ -137,10 +139,16 @@ def resolver_modelo(skus, nodos, ibase, target, conf, nc, horizonte, time_limit=
             for t in all_days:
                 ub_row({var_idx[("I", s, n, t)]: -1, var_idx[("U", s, n, t)]: -1}, -target[(s, n, t)])
 
+    # Exceso: si contar_transito, el stock en camino al nodo (sale t, llega t+1)
+    # suma a su posicion; si no, el transito "esconde" sobre-stock un dia.
     for s in skus:
         for n in nodos:
             for t in all_days:
-                ub_row({var_idx[("I", s, n, t)]: 1, var_idx[("E", s, n, t)]: -1}, target[(s, n, t)])
+                coefs = {var_idx[("I", s, n, t)]: 1, var_idx[("E", s, n, t)]: -1}
+                if contar_transito and t in T_days:
+                    for a in [a for a in ARCOS if a[1] == n]:
+                        coefs[var_idx[("T", s, a, t)]] = 1
+                ub_row(coefs, target[(s, n, t)])
 
     for n in CAP_N:
         for t in all_days:
@@ -168,6 +176,8 @@ def resolver_modelo(skus, nodos, ibase, target, conf, nc, horizonte, time_limit=
     for key, idx in var_idx.items():
         if key[0] in ("T", "k"):
             integrality[idx] = 1
+            if key[-1] in dias_sin_despacho:
+                ub[idx] = 0
         if key[0] == "I":
             lb[idx] = -1e6
 
